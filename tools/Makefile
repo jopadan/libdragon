@@ -1,5 +1,8 @@
 N64_GCCPREFIX ?= $(N64_INST)
+N64_TARGET ?= mips64-elf
 INSTALLDIR ?= $(N64_INST)
+N64_GCCPREFIX_TRIPLET = $(N64_GCCPREFIX)/bin/$(addsuffix -,$(N64_TARGET))
+TARGET := $(shell $(CC) -dumpmachine)
 
 C_CXX_FLAGS += -O2 -pthread -Wall -Werror
 C_CXX_FLAGS += -I../include -MMD
@@ -16,6 +19,18 @@ ifeq ($(OS),Windows_NT)
 	CFLAGS += -static
 	CXXFLAGS += -static
   	LDFLAGS += -static
+
+# Check that $CC and $CXX are set to a mingw compiler. Many users are not really
+# familiar with msys2 and they tend to have weirdly broken environments. Let's try
+# to help them.
+	CHECK_CC := $(shell $(CC) -dumpmachine 2>/dev/null | grep -i "mingw" >/dev/null && echo ok || echo fail)
+	CHECK_CXX := $(shell $(CXX) -dumpmachine 2>/dev/null | grep -i "mingw" >/dev/null && echo ok || echo fail)
+	ifeq ($(CHECK_CC),fail)
+		$(error "CC is not set to a mingw compiler: ${CC}")
+	endif
+	ifeq ($(CHECK_CXX),fail)
+		$(error "CXX is not set to a mingw compiler: ${CXX}")
+	endif
 endif
 
 all:
@@ -33,6 +48,11 @@ all:
 
 # Avoid many warnings for vendored code that we don't intend to ever modify
 common/shrinkler_compress.o: 	   CFLAGS += -Wno-all -Wno-error
+mkfont/freetype/FreeTypeAmalgam.o: CFLAGS += -Wno-all -Wno-error
+mkfont/plutosvg/plutosvg-amalgam.o:CFLAGS += -Imkfont/plutosvg -Wno-unused-function -Wno-error
+mkfont/mkfont.o:              	   CXXFLAGS += -Imkfont/plutosvg -Imkfont/freetype
+
+
 common-clean:
 	rm -f common/*.o common/*.a common/*.d
 common/assetcomp.a: common/assetcomp.o common/lz4_compress.o \
@@ -46,8 +66,8 @@ common/mips_decomp_l3.bin: ../src/compress/shrinkler_dec_fast.S
 
 $(DECOMP_STUBS):
 	@echo "    [MIPS] $@"
-	$(N64_GCCPREFIX)/bin/mips64-elf-gcc -c -o $@.o $<
-	$(N64_GCCPREFIX)/bin/mips64-elf-objcopy -O binary $@.o $@
+	$(N64_GCCPREFIX_TRIPLET)gcc -c -o $@.o $<
+	$(N64_GCCPREFIX_TRIPLET)objcopy -O binary $@.o $@
 	rm $@.o
 
 -include $(wildcard common/*.d)
@@ -56,6 +76,7 @@ mkasset_OBJS = mkasset/mkasset.o common/assetcomp.a
 mksprite_OBJS = mksprite/mksprite.o common/assetcomp.a
 audioconv64_OBJS = audioconv64/audioconv64.o
 mkdfs_OBJS = mkdfs/mkdfs.o
+mkfont_OBJS = mkfont/mkfont.o mkfont/freetype/FreeTypeAmalgam.o mkfont/plutosvg/plutosvg-amalgam.o common/assetcomp.a
 n64dso_OBJS = n64dso/n64dso.o common/assetcomp.a
 n64dso-extern_OBJS = n64dso/n64dso-extern.o
 n64dso-msym_OBJS = n64dso/n64dso-msym.o
@@ -66,7 +87,7 @@ ed64romconfig_OBJS = ed64romconfig.o
 n64elfcompress_OBJS = n64elfcompress/n64elfcompress.o common/assetcomp.a
 n64elfcompress/n64elfcompress.o: n64elfcompress/n64elfcompress.c $(DECOMP_STUBS)
 
-TOOLS = n64tool n64sym n64elfcompress ed64romconfig audioconv64 mkdfs dumpdfs mkasset mksprite n64dso n64dso-msym n64dso-extern
+TOOLS = n64tool n64sym n64elfcompress ed64romconfig audioconv64 mkdfs dumpdfs mkasset mksprite mkfont n64dso n64dso-msym n64dso-extern
 
 # Define a variable that has value ".exe" on Windows and "" on other platforms
 EXE = $(if $(findstring Windows,$(OS)),.exe,)

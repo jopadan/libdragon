@@ -34,6 +34,9 @@ JOBS="${JOBS:-1}" # If getconf returned nothing, default to 1
 # GDB configure arguments to use system GMP/MPC/MFPF
 GDB_CONFIGURE_ARGS=()
 
+# Create build and download directories
+mkdir -p "$BUILD_PATH" "$DOWNLOAD_PATH"
+
 # Resolve absolute paths for build and download directories
 BUILD_PATH=$(cd "$BUILD_PATH" && pwd)
 DOWNLOAD_PATH=$(cd "$DOWNLOAD_PATH" && pwd)
@@ -46,12 +49,16 @@ command_exists () {
 
 # Download the file URL using wget or curl (depending on which is installed)
 download () {
-    if   command_exists wget ; then (cd "$DOWNLOAD_PATH" && wget -c  "$1")
-    elif command_exists curl ; then (cd "$DOWNLOAD_PATH" && curl -LO "$1")
+    local url="$1"
+    local file="$DOWNLOAD_PATH/$(basename "$url")"
+    local tmpfile="$file.part"
+    if   command_exists wget ; then wget --continue --output-document "$tmpfile" "$url"
+    elif command_exists curl ; then curl --location --output "$tmpfile" "$url"
     else
         echo "Install wget or curl to download toolchain sources" 1>&2
         return 1
     fi
+    mv "$tmpfile" "$file"
 }
 
 # Dependency downloads and unpack
@@ -63,10 +70,12 @@ if [[ $OSTYPE == 'darwin'* ]]; then
     # Tell GDB configure to use Homebrew's GMP, MPFR, MPC, and Zlib.
     # These should have already been installed by build-toolchain.sh
     GDB_CONFIGURE_ARGS=(
-        "--with-gmp=$(brew --prefix)"
-        "--with-mpfr=$(brew --prefix)"
-        "--with-mpc=$(brew --prefix)"
-        "--with-zlib=$(brew --prefix)"
+        "--with-gmp=$(brew --prefix gmp)"
+        "--with-mpfr=$(brew --prefix mpfr)"
+        "--with-mpc=$(brew --prefix libmpc)"
+        "--with-isl=$(brew --prefix isl)"
+        "--with-python=python3"
+        "--with-system-zlib"
     )
 elif [ "$N64_HOST" == "x86_64-w64-mingw32" ]; then
     # Configure GDB arguments for Windows cross-compilation

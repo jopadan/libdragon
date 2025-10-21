@@ -1,6 +1,6 @@
 #! /bin/bash
 # N64 MIPS GCC toolchain build/install script for Unix distributions
-# (c) 2012-2023 DragonMinded and libDragon Contributors.
+# (c) 2012-2024 DragonMinded and libDragon Contributors.
 # See the root folder for license information.
 
 # Bash strict mode http://redsymbol.net/articles/unofficial-bash-strict-mode/
@@ -33,6 +33,7 @@ JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN)}"
 JOBS="${JOBS:-1}" # If getconf returned nothing, default to 1
 
 # GCC configure arguments to use system GMP/MPC/MFPF
+BINUTILS_CONFIGURE_ARGS=()
 GCC_CONFIGURE_ARGS=()
 
 # Dependency source libs (Versions)
@@ -60,12 +61,16 @@ command_exists () {
 
 # Download the file URL using wget or curl (depending on which is installed)
 download () {
-    if   command_exists wget ; then (cd "$DOWNLOAD_PATH" && wget -c  "$1")
-    elif command_exists curl ; then (cd "$DOWNLOAD_PATH" && curl -LO "$1")
+    local url="$1"
+    local file="$DOWNLOAD_PATH/$(basename "$url")"
+    local tmpfile="$file.part"
+    if   command_exists wget ; then wget --continue --output-document "$tmpfile" "$url"
+    elif command_exists curl ; then curl --location --output "$tmpfile" "$url"
     else
         echo "Install wget or curl to download toolchain sources" 1>&2
         return 1
     fi
+    mv "$tmpfile" "$file"
 }
 
 # Compilation on macOS via homebrew
@@ -78,7 +83,8 @@ if [[ $OSTYPE == 'darwin'* ]]; then
 
     # Install required dependencies. gsed is really required, the others are optionals
     # and just speed up build.
-    brew install -q gmp mpfr libmpc gsed gcc isl libpng lz4 make mpc texinfo zlib
+    # zlib is part of the base OS, and doesn't need to be installed here.
+    brew install -q gmp mpfr libmpc gsed isl make python3 texinfo
 
     # FIXME: we could avoid download/symlink GMP and friends for a cross-compiler
     # but we need to symlink them for the canadian compiler.
@@ -86,12 +92,20 @@ if [[ $OSTYPE == 'darwin'* ]]; then
     #MPC_V=""
     #MPFR_V=""
 
-    # Tell GCC configure where to find the dependent libraries
+    # Tell Binutils and GCC configure where to find the dependent libraries
+    BINUTILS_CONFIGURE_ARGS=(
+        "--with-gmp=$(brew --prefix gmp)"
+        "--with-mpfr=$(brew --prefix mpfr)"
+        "--with-mpc=$(brew --prefix libmpc)"
+        "--with-isl=$(brew --prefix isl)"
+        "--with-system-zlib"
+    )
     GCC_CONFIGURE_ARGS=(
-        "--with-gmp=$(brew --prefix)"
-        "--with-mpfr=$(brew --prefix)"
-        "--with-mpc=$(brew --prefix)"
-        "--with-zlib=$(brew --prefix)"
+        "--with-gmp=$(brew --prefix gmp)"
+        "--with-mpfr=$(brew --prefix mpfr)"
+        "--with-mpc=$(brew --prefix libmpc)"
+        "--with-isl=$(brew --prefix isl)"
+        "--with-system-zlib"
     )
 
     # Install GNU sed as default sed in PATH. GCC compilation fails otherwise,
@@ -99,7 +113,8 @@ if [[ $OSTYPE == 'darwin'* ]]; then
     PATH="$(brew --prefix gsed)/libexec/gnubin:$PATH"
     export PATH
 else
-    # Configure GCC arguments for non-macOS platforms
+    # Configure Binutils and GCC arguments for non-macOS platforms
+    BINUTILS_CONFIGURE_ARGS+=("--with-system-zlib")
     GCC_CONFIGURE_ARGS+=("--with-system-zlib")
 fi
 
@@ -246,7 +261,7 @@ fi
 # Compile BUILD->TARGET binutils
 mkdir -p binutils_compile_target
 pushd binutils_compile_target
-../"binutils-$BINUTILS_V"/configure \
+../"binutils-$BINUTILS_V"/configure ${BINUTILS_CONFIGURE_ARGS[@]} \
     --prefix="$CROSS_PREFIX" \
     --target="$N64_TARGET" \
     --with-cpu=mips64vr4300 \
@@ -273,7 +288,7 @@ pushd gcc_compile_target
     --with-newlib \
     --disable-win32-registry \
     --disable-nls \
-    --disable-werror 
+    --disable-werror
 make all-gcc -j "$JOBS"
 make install-gcc || sudo make install-gcc || su -c "make install-gcc"
 make all-target-libgcc -j "$JOBS"

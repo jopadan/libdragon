@@ -89,6 +89,18 @@ typedef struct
      */
     int (*fstat)( void *file, struct stat *st );
     /** 
+     * @brief Function to call when performing a stat command
+     *
+     * @param[in]  file
+     *             Full path of the file to be examined, relative to the root
+     *             of the filesystem.
+     * @param[out] st
+     *             Stat structure to populate with file statistics
+     *
+     * @return 0 on success or a negative value on error (and errno is set).
+     */
+    int (*stat)( char *name, struct stat *st );
+    /** 
      * @brief Function to call when performing an lseek command
      *
      * @param[in] file
@@ -153,7 +165,7 @@ typedef struct
      *
      * @param[in]  path
      *             Full path of the directory to list files from, relative to the
-     *             root of the filesystem.
+     *             root of the filesystem. It always begins with a slash.
      * @param[out] dir
      *             Directory structure to place information on the first file in the
      *             directory.
@@ -162,9 +174,20 @@ typedef struct
      *         or a different negative value on error (in which case, errno will be set).
      */
     int (*findfirst)( char *path, dir_t *dir );
+
+    ///@cond
+    #ifndef SYSTEM_NO_DEPRECATED
+    __attribute__((deprecated("Use findnext2 instead")))
+    #endif
+    int (*findnext)( dir_t *dir );
+    ///@endcond
+    
     /** 
      * @brief Function to call when performing a findnext operation
      *
+     * @param[in]  path
+     *             Full path of the directory to list files from, relative to the
+     *             root of the filesystem. It always begins with a slash.
      * @param[out] dir
      *             Directory structure to place information on the next file in the
      *             directory.
@@ -172,7 +195,40 @@ typedef struct
      * @return 0 on successful lookup, -1 if the directory existed and is empty,
      *         or a different negative value on error (in which case, errno will be set).
      */
-    int (*findnext)( dir_t *dir );
+    int (*findnext2)( const char *path, dir_t *dir );
+    /**
+     * @brief Truncate a file to a specified length
+     * 
+     * @param file    Arbitrary file handle returned by #filesystem_t::open
+     * @param length  New length of the file
+     * 
+     * @return 0 on success or a negative value on failure (and errno is set)
+     */
+    int (*ftruncate)( void *file, int length );
+    /**
+     * @brief Create a directory
+     * 
+     * @param[in] path
+     *            Full path of the directory to create, relative to the root of the filesystem.
+     * @param[in] mode
+     *            Directory permissions
+     * 
+     * @return 0 on success or a negative value on failure (errno must be set)
+     */
+    int (*mkdir)( char *path, mode_t mode );
+    /**
+     * @brief Perform IO Control Request
+     *
+     * @param[in] file
+     *            File handle
+     * @param[in] cmd
+     *            Request ioctl command code 
+     * @param[in] argp
+     *            Pointer to a request-specific data structure
+     *
+     * @return 0 on success or a negative value on failure (errno must be set)
+     */
+    int (*ioctl)(void *file, unsigned long cmd, void *argp);
 } filesystem_t;
 
 /**

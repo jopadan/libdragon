@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <assert.h>
 #include "cop0.h"
 #include "cop1.h"
@@ -35,7 +36,9 @@
  */
 
 ///@cond
+extern int __boot_memsize;
 extern int __boot_consoletype;
+extern int __boot_tvtype;
 ///@endcond
 
 /**
@@ -53,8 +56,73 @@ extern int __boot_consoletype;
  */
 #define KSEG0_START_ADDR ((void*)0x80000000)
 
+/** 
+ * @brief A physical address on the MIPS bus.
+ * 
+ * Physical addresses are 32-bit wide, and are used to address the memory
+ * space of the MIPS R4300 CPU. The MIPS R4300 CPU has a 32-bit address bus,
+ * and can address up to 4 GiB of memory.
+ * 
+ * Physical addresses are just numbers, they cannot be used as pointers (dereferenced).
+ * To access them, you must first convert them virtual addresses using the
+ * #VirtualCachedAddr or #VirtualUncachedAddr macros.
+ * 
+ * In general, libdragon will try to use #phys_addr_t whenever a physical
+ * address is expected or returned, and C pointers for virtual addresses.
+ * Unfortunately, not all codebase can be changed to follow this convention
+ * for backward compatibility reasons.
+ */
+typedef uint32_t phys_addr_t;
+
 /**
- * @brief Return the uncached memory address for a given address
+ * @brief Return the physical memory address for a given virtual address (pointer)
+ *
+ * @param[in] _addr     Virtual address to convert to a physical address
+ * 
+ * @return A phys_addr_t containing the physical memory address
+ */
+#define PhysicalAddr(_addr) ({ \
+    const volatile void *_addrp = (_addr); \
+    (((phys_addr_t)(_addrp))&~0xE0000000); \
+})
+
+/**
+ * @brief Create a virtual addresses in a cached segment to access a physical address
+ * 
+ * This macro creates a virtual address that can be used to access a physical
+ * address in the cached segment of the memory. The cached segment is the
+ * segment of memory that is cached by the CPU, and is the default segment
+ * for all memory accesses.
+ * 
+ * The virtual address created by this macro can be used as a pointer in C
+ * to access the physical address.
+ *
+ * @param[in] _addr     Physical address to convert to a virtual address
+ * 
+ * @return A void pointer to the cached memory address
+ */
+#define VirtualCachedAddr(_addr) ((void *)(((unsigned long)(_addr))|0x80000000))
+
+/**
+ * @brief Create a virtual addresses in an uncached segment to access a physical address
+ * 
+ * This macro creates a virtual address that can be used to access a physical
+ * address in the uncached segment of the memory. The uncached segment is the
+ * segment of memory that is not cached by the CPU, and is used for memory
+ * that is accessed by hardware devices, like the RCP.
+ * 
+ * The virtual address created by this macro can be used as a pointer in C
+ * to access the physical address.
+ *
+ * @param[in] _addr     Physical address to convert to a virtual address
+ * 
+ * @return A void pointer to the uncached memory address
+ */
+#define VirtualUncachedAddr(_addr) ((void *)(((unsigned long)(_addr))|0xA0000000))
+
+
+/**
+ * @brief Return the uncached memory address for a given virtual address
  *
  * @param[in] _addr
  *            Address in RAM to convert to an uncached address
@@ -112,19 +180,6 @@ extern int __boot_consoletype;
  * @return A void pointer to the cached memory address in RAM
  */
 #define CachedAddr(_addr) ((void *)(((unsigned long)(_addr))&~0x20000000))
-
-/**
- * @brief Return the physical memory address for a given address
- *
- * @param[in] _addr
- *            Address in RAM to convert to a physical address
- * 
- * @return A void pointer to the physical memory address in RAM
- */
-#define PhysicalAddr(_addr) ({ \
-    const volatile void *_addrp = (_addr); \
-    (((unsigned long)(_addrp))&~0xE0000000); \
-})
 
 /** @brief Symbol at the start of code (start of ROM contents after header) */
 extern char __libdragon_text_start[];
@@ -282,6 +337,19 @@ void wait_ticks( unsigned long wait );
 void wait_ms( unsigned long wait_ms );
 
 /**
+ * @brief Force a complete halt of all processors
+ *
+ * @note It should occur whenever a reset has been triggered 
+ * and its past its RESET_TIME_LENGTH grace time period.
+ * This function will shut down the RSP and the CPU, blank the VI.
+ * Eventually the RDP will flush and complete its work as well.
+ * The system will recover after a reset or power cycle.
+ * 
+ */
+__attribute__((noreturn)) 
+void die(void);
+
+/**
  * @brief Force a data cache invalidate over a memory region
  *
  * Use this to force the N64 to update cache from RDRAM.
@@ -301,18 +369,12 @@ void wait_ms( unsigned long wait_ms );
  * that first writebacks the affected cachelines to RDRAM, guaranteeing integrity
  * of memory areas that share cachelines with the region that must be invalidated.
  *
- * @param[in] addr_
+ * @param[in] addr
  *            Pointer to memory in question
- * @param[in] sz_
+ * @param[in] length
  *            Length in bytes of the data pointed at by addr
  */
-#define data_cache_hit_invalidate(addr_, sz_) ({ \
-	void *addr = (addr_); unsigned long sz = (sz_); \
-	assert(((uint32_t)addr % 16) == 0 && (sz % 16) == 0); \
-	__data_cache_hit_invalidate(addr, sz); \
-})
-
-void __data_cache_hit_invalidate(volatile void * addr, unsigned long length);
+void data_cache_hit_invalidate(volatile void* addr, unsigned long length);
 
 /**
  * @brief Force a data cache writeback over a memory region
@@ -405,19 +467,51 @@ void inst_cache_invalidate_all(void);
  *
  * @return amount of total available memory in bytes.
  */
-int get_memory_size();
+int get_memory_size(void);
 
 /**
  * @brief Is expansion pak in use.
  *
- * Checks whether the maximum available memory has been expanded to 8 MiB
+ * Checks whether the maximum available memory has been expanded to 8 MiB.
+ * If your application needs to the use of the expansion pak, you should provide
+ * an error message to the user if it is not present. Libdragon offers a
+ * function to do this, #assert_memory_expanded, which will emit an error
  *
  * @return true if expansion pak detected, false otherwise.
  * 
  * @note On iQue, this function returns true only if the game has been assigned
  *       exactly 8 MiB of RAM.
  */
-bool is_memory_expanded();
+bool is_memory_expanded(void);
+
+/**
+ * @brief Assert that the expansion pak is present.
+ *
+ * This function will emit an error screen if the expansion pak is not present,
+ * and will halt the system. It should be called in main() to ensure that the
+ * expansion pak is present before proceeding with the rest of
+ * the application. This enforces a good pattern to make the application fails
+ * early with a proper error message (rather than a crash) if the expansion pak
+ * is not present.
+ *
+ * If you want to provide your own graphical error screen, use 
+ * #is_memory_expanded instead to check if the expansion pak is present,
+ * and then show your own error screen if it is not present.
+ */
+void assert_memory_expanded(void);
+
+/**
+ * @brief Heap statistics
+ */
+typedef struct {
+    int total;      ///< Total heap size in bytes
+    int used;       ///< Used heap size in bytes
+} heap_stats_t;
+
+/**
+ * @brief Return information about memory usage of the heap
+ */
+void sys_get_heap_stats(heap_stats_t *stats);
 
 /**
  * @brief Allocate a buffer that will be accessed as uncached memory.
@@ -480,7 +574,10 @@ typedef enum {
  * 
  * @return enum value indicating PAL, NTSC or MPAL
  */
-tv_type_t get_tv_type();
+inline tv_type_t get_tv_type(void)
+{
+    return (tv_type_t)__boot_tvtype;
+}
 
 /** @brief Reset types */
 typedef enum {

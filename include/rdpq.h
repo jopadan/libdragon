@@ -748,6 +748,7 @@ inline void rdpq_set_tile(rdpq_tile_t tile,
     else {
         assertf(parms->s.shift >= -5 && parms->s.shift <= 10, "invalid s shift %d: must be in [-5..10]", parms->s.shift);
         assertf(parms->t.shift >= -5 && parms->t.shift <= 10, "invalid t shift %d: must be in [-5..10]", parms->t.shift);
+        assertf(parms->palette < 16, "invalid palette %d: must be in [0..15]", parms->palette);
     }
     bool fixup = false;
     bool reuse = false;
@@ -1239,6 +1240,30 @@ inline void rdpq_set_texture_image_raw(uint8_t index, uint32_t offset, tex_forma
 }
 
 /**
+ * @brief Load a block of memory to TMEM with a single contiguous memory transfer.
+ *
+ * Loads data from RDRAM to TMEM but takes in byte offsets and sizes unlike #rdpq_load_block.
+ *
+ * @param[in] offset    Destination TMEM offset
+ * @param[in] buffer    Pointer to data in RDRAM to load
+ * @param[in] size      Number of bytes to load (max: 4096)
+ *
+ * @see #rdpq_load_block
+ * @see #rdpq_load_block_fx
+ */
+inline void rdpq_load_block_linear(int32_t offset, void *buffer, uint16_t size)
+{
+    assertf((offset & 7) == 0, "invalid TMEM offset %ld: must be 8-byte aligned", offset);
+    assertf((PhysicalAddr(buffer) & 7) == 0, "invalid buffer: %p, must be 8-byte aligned", buffer);
+    assertf((size & 7) == 0, "invalid size %d: must be a multiple of 8", size);
+    assertf(size <= 4096, "invalid size %d: must fit TMEM", size);
+    rdpq_set_texture_image_raw(0, PhysicalAddr(buffer), FMT_RGBA16, 8, size / 8);
+    rdpq_set_tile(RDPQ_TILE_INTERNAL, FMT_RGBA16, offset, 0, NULL);
+    uint32_t num_texels = size / 2;
+    rdpq_load_block(RDPQ_TILE_INTERNAL, 0, 0, num_texels, 16);
+}
+
+/**
  * @brief Store an address into the rdpq lookup table
  * 
  * This function is for advanced usages, it is not normally required to call it.
@@ -1538,18 +1563,25 @@ void rdpq_exec(void *buffer, int size);
  *       of #rdpq_write, please treat @p num_rdp_commands as it was the
  *       "number of 64-bit words". So for instance if the RSP command generates
  *       a single RDP TEXTURE_RECTANGLE command, pass 2 as @p num_rdp_commands.
+ * 
+ * @hideinitializer
  */
 #define rdpq_write(num_rdp_commands, ovl_id, cmd_id, ...) ({ \
     int __num_rdp_commands = (num_rdp_commands); \
     if (!__builtin_constant_p(__num_rdp_commands) || __num_rdp_commands != 0) { \
-        extern rspq_block_t *rspq_block; \
         if (__builtin_expect(rspq_block != NULL, 0)) { \
-            extern void __rdpq_block_reserve(int); \
             __rdpq_block_reserve(__num_rdp_commands); \
         } \
     } \
     rspq_write(ovl_id, cmd_id, ##__VA_ARGS__); \
 })
+
+/// @cond
+// Declarations used by rdpq_write, not part of the public API.
+typedef struct rspq_block_s rspq_block_t;
+extern rspq_block_t *rspq_block;
+extern void __rdpq_block_reserve(int); \
+/// @endcond
 
 
 #ifdef __cplusplus

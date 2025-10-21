@@ -7,11 +7,16 @@ include n64.mk
 INSTALLDIR = $(N64_INST)
 
 # N64_INCLUDEDIR is normally (when building roms) a path to the installed include files
-# (e.g. /opt/libdragon/mips64-elf/include), set in n64.mk
+# (e.g. /opt/libdragon/$(N64_TARGET)/include), set in n64.mk
 # When building libdragon, override it to use the source include files instead (./include)
 N64_INCLUDEDIR = $(CURDIR)/include
 
-LIBDRAGON_CFLAGS = -I$(CURDIR)/src -ffile-prefix-map=$(CURDIR)=libdragon
+# N64_BACKTRACE_FILE_PREFIX is exposed from n64.mk, so we can use it to set the
+# prefix for libdragon. It is still possible to override this when running make
+# for libdragon specifically via a make override.
+N64_BACKTRACE_FILE_PREFIX=libdragon
+
+LIBDRAGON_CFLAGS = -I$(CURDIR)/src
 
 # Activate N64 toolchain for libdragon build
 libdragon: CC=$(N64_CC)
@@ -32,6 +37,7 @@ LIBDRAGON_OBJS += \
 	$(BUILD_DIR)/interrupt.o \
 	$(BUILD_DIR)/backtrace.o \
 	$(BUILD_DIR)/fmath.o \
+	$(BUILD_DIR)/dir.o \
 	$(BUILD_DIR)/inthandler.o \
 	$(BUILD_DIR)/entrypoint.o \
 	$(BUILD_DIR)/debug.o \
@@ -98,27 +104,31 @@ $(INSTALLDIR)/include/n64.mk: n64.mk
 	install -cv -m 0644 n64.mk $(INSTALLDIR)/include/n64.mk
 
 install: install-mk libdragon
-	mkdir -p $(INSTALLDIR)/mips64-elf/lib
-	install -Cv -m 0644 libdragon.a $(INSTALLDIR)/mips64-elf/lib/libdragon.a
-	install -Cv -m 0644 n64.ld $(INSTALLDIR)/mips64-elf/lib/n64.ld
-	install -Cv -m 0644 dso.ld $(INSTALLDIR)/mips64-elf/lib/dso.ld
-	install -Cv -m 0644 rsp.ld $(INSTALLDIR)/mips64-elf/lib/rsp.ld
-	install -Cv -m 0644 libdragonsys.a $(INSTALLDIR)/mips64-elf/lib/libdragonsys.a
-	mkdir -p $(INSTALLDIR)/mips64-elf/include
-	install -Cv -m 0644 include/*.h $(INSTALLDIR)/mips64-elf/include/
-	install -Cv -m 0644 include/*.inc $(INSTALLDIR)/mips64-elf/include/
-	install -Cv -m 0644 include/ucode.S $(INSTALLDIR)/mips64-elf/include/ucode.S
-	mkdir -p $(INSTALLDIR)/mips64-elf/include/libcart
-	install -Cv -m 0644 src/libcart/cart.h $(INSTALLDIR)/mips64-elf/include/libcart/cart.h
-	mkdir -p $(INSTALLDIR)/mips64-elf/include/fatfs
-	install -Cv -m 0644 src/fatfs/diskio.h $(INSTALLDIR)/mips64-elf/include/fatfs/diskio.h
-	install -Cv -m 0644 src/fatfs/ff.h $(INSTALLDIR)/mips64-elf/include/fatfs/ff.h
-	install -Cv -m 0644 src/fatfs/ffconf.h $(INSTALLDIR)/mips64-elf/include/fatfs/ffconf.h
-
+	mkdir -p $(INSTALLDIR)/$(N64_TARGET)/lib
+	install -Cv -m 0644 libdragon.a $(INSTALLDIR)/$(N64_TARGET)/lib/libdragon.a
+	install -Cv -m 0644 n64.ld $(INSTALLDIR)/$(N64_TARGET)/lib/n64.ld
+	install -Cv -m 0644 dso.ld $(INSTALLDIR)/$(N64_TARGET)/lib/dso.ld
+	install -Cv -m 0644 rsp.ld $(INSTALLDIR)/$(N64_TARGET)/lib/rsp.ld
+	install -Cv -m 0644 libdragonsys.a $(INSTALLDIR)/$(N64_TARGET)/lib/libdragonsys.a
+	mkdir -p $(INSTALLDIR)/$(N64_TARGET)/include
+	install -Cv -m 0644 include/*.h $(INSTALLDIR)/$(N64_TARGET)/include/
+	install -Cv -m 0644 include/*.inc $(INSTALLDIR)/$(N64_TARGET)/include/
+	install -Cv -m 0644 include/ucode.S $(INSTALLDIR)/$(N64_TARGET)/include/
+	mkdir -p $(INSTALLDIR)/$(N64_TARGET)/include/libcart
+	install -Cv -m 0644 src/libcart/cart.h $(INSTALLDIR)/$(N64_TARGET)/include/libcart/cart.h
+	mkdir -p $(INSTALLDIR)/$(N64_TARGET)/include/fatfs
+	install -Cv -m 0644 src/fatfs/diskio.h $(INSTALLDIR)/$(N64_TARGET)/include/fatfs/diskio.h
+	install -Cv -m 0644 src/fatfs/ff.h $(INSTALLDIR)/$(N64_TARGET)/include/fatfs/ff.h
+	install -Cv -m 0644 src/fatfs/ffconf.h $(INSTALLDIR)/$(N64_TARGET)/include/fatfs/ffconf.h
 
 clean:
 	rm -f *.o *.a
 	rm -rf $(CURDIR)/build
+
+regen:
+# Regenerate generated files that are committed. If they are changed, they will
+# be marked as modified in git.
+	cd $(SOURCE_DIR)/rdpq && ./mkfontbuiltin.sh
 
 test:
 	$(MAKE) -C tests

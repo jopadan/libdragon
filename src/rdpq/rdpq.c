@@ -1,6 +1,7 @@
 /**
  * @file rdpq.c
  * @author Dennis Heinze <dennisjp.heinze@gmail.com>
+ * @author Giovanni Bajo <giovannibajo@gmail.com>
  * @brief RDP Command queue
  * @ingroup rdpq
  *
@@ -457,7 +458,7 @@ void rdpq_init()
     // Initialize the ucode state.
     memset(rdpq_state, 0, sizeof(rdpq_state_t));
     rdpq_state->rdram_state_address = PhysicalAddr(rdpq_state);
-    rdpq_state->rdram_syncpoint_id = PhysicalAddr(&__rspq_syncpoints_done);
+    rdpq_state->rdram_syncpoint_id = PhysicalAddr(&__rspq_syncpoints_done[0]);
     assert((rdpq_state->rdram_state_address & 7) == 0);  // check alignment for DMA
     assert((rdpq_state->rdram_syncpoint_id & 7) == 0);  // check alignment for DMA
     
@@ -1160,6 +1161,7 @@ extern inline void rdpq_load_tlut_raw(rdpq_tile_t tile, int first_color, int num
 extern inline void rdpq_set_tile_size_fx(rdpq_tile_t tile, uint16_t s0, uint16_t t0, uint16_t s1, uint16_t t1);
 extern inline void rdpq_load_block(rdpq_tile_t tile, uint16_t s0, uint16_t t0, uint16_t num_texels, uint16_t tmem_pitch);
 extern inline void rdpq_load_block_fx(rdpq_tile_t tile, uint16_t s0, uint16_t t0, uint16_t num_texels, uint16_t dxt);
+extern inline void rdpq_load_block_linear(int32_t offset, void *buffer, uint16_t size);
 extern inline void rdpq_load_tile_fx(rdpq_tile_t tile, uint16_t s0, uint16_t t0, uint16_t s1, uint16_t t1);
 extern inline void rdpq_set_combiner_raw(uint64_t cc);
 extern inline void rdpq_set_other_modes_raw(uint64_t mode);

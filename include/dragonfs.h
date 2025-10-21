@@ -47,6 +47,12 @@
  * @{
  */
 
+#ifdef N64
+
+#include "ioctl.h"
+
+#endif
+
 /**
  * @brief Default filesystem location 
  *
@@ -66,6 +72,12 @@
  * @brief Maximum depth of directories supported
  */
 #define MAX_DIRECTORY_DEPTH 100
+
+/**
+ * @brief Base ROM Address Request ioctl Command Code
+ */
+#define IODFS_GET_ROM_BASE _IO('D', 0)
+
 
 /**
  * @name DragonFS Return values
@@ -144,45 +156,6 @@ extern "C" {
  * @return DFS_ESUCCESS on success or a negative error otherwise.
  */
 int dfs_init(uint32_t base_fs_loc);
-
-/**
- * @brief Change directories to the specified path.  
- *
- * Supports absolute and relative 
- *
- * @param[in] path
- *            Relative or absolute path to change directories to
- * 
- * @return DFS_ESUCCESS on success or a negative value on error.
- */
-int dfs_chdir(const char * const path);
-
-/**
- * @brief Find the first file or directory in a directory listing.
- *
- * Supports absolute and relative.  If the path is invalid, returns a negative DFS_errno.  If
- * a file or directory is found, returns the flags of the entry and copies the name into buf.
- *
- * @param[in]  path
- *             The path to look for files in
- * @param[out] buf
- *             Buffer to place the name of the file or directory found
- *
- * @return The flags (#FLAGS_FILE, #FLAGS_DIR, #FLAGS_EOF) or a negative value on error.
- */
-int dfs_dir_findfirst(const char * const path, char *buf);
-
-/**
- * @brief Find the next file or directory in a directory listing. 
- *
- * @note Should be called after doing a #dfs_dir_findfirst.
- *
- * @param[out] buf
- *             Buffer to place the name of the next file or directory found
- *
- * @return The flags (#FLAGS_FILE, #FLAGS_DIR, #FLAGS_EOF) or a negative value on error.
- */
-int dfs_dir_findnext(char *buf);
 
 
 /**
@@ -290,13 +263,39 @@ int dfs_size(uint32_t handle);
  * @return A pointer to the physical address of the file body, or 0
  *         if the file was not found.
  * 
+ * @see #dfs_rom_size
  */
 uint32_t dfs_rom_addr(const char *path);
+
+/**
+ * @brief Return the size of a file (in ROM data)
+ * 
+ * Returns the size of a file without opening it. Can be used in conjunction
+ * with dfs_rom_addr to perform DMA without without calling dfs_open.
+ *
+ * @param[in] path
+ *            Name of the file
+ *
+ * @return The size of a file in ROM, or DFS_ENOFILE if the file was not found.
+ * 
+ * @see #dfs_rom_addr
+ * 
+ */
+int dfs_rom_size(const char *path);
 
 /**
  * @brief Convert DFS error code into an error string
  */
 const char *dfs_strerror(int error);
+
+__attribute__((deprecated("relative paths support is deprecated; please use only absolute paths when interacting with DragonFS")))
+int dfs_chdir(const char * const path);
+
+__attribute__((deprecated("use dir_findfirst instead")))
+int dfs_dir_findfirst(const char * const path, char *buf);
+
+__attribute__((deprecated("use dir_findnext instead")))
+int dfs_dir_findnext(char *buf);
 
 #ifdef __cplusplus
 }

@@ -62,11 +62,15 @@
 #include "rdpq_mode.h"
 #include "rdpq_tex.h"
 #include "rdpq_sprite.h"
+#include "rdpq_text.h"
+#include "rdpq_paragraph.h"
+#include "rdpq_font.h"
 #include "rdpq_debug.h"
 #include "rdpq_macros.h"
 #include "surface.h"
 #include "sprite.h"
 #include "debugcpp.h"
 #include "dlfcn.h"
+#include "ioctl.h"
 
 #endif
